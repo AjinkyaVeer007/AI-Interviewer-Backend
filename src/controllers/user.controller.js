@@ -6,6 +6,7 @@ const textScrapper = require("../utils/textScrapper");
 const { default: z } = require("zod");
 const { zodTextFormat } = require("openai/helpers/zod.js");
 const fs = require("fs");
+const User = require("../models/user.model");
 
 dotenv.config();
 
@@ -13,6 +14,29 @@ const client = new OpenAI();
 
 const QuestionFormat = z.object({
   questions: z.array(z.string()),
+});
+
+const register = asyncHandler(async (req, res) => {
+  const { username, fname, lname, password } = req.body;
+
+  if (!username || !fname || !lname || !password) {
+    throw new CustomError("All fields are mandatory", 400);
+  }
+
+  const user = new User({
+    username,
+    fname,
+    lname,
+    password,
+  });
+
+  await user.save();
+
+  return res.status(200).json({
+    message: "User created successfully",
+    success: true,
+    user: user,
+  });
 });
 
 const uploadResume = asyncHandler(async (req, res) => {
@@ -72,4 +96,5 @@ const uploadResume = asyncHandler(async (req, res) => {
 
 module.exports = {
   uploadResume,
+  register,
 };
