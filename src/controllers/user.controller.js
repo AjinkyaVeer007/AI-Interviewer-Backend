@@ -7,8 +7,14 @@ const { default: z } = require("zod");
 const { zodTextFormat } = require("openai/helpers/zod.js");
 const fs = require("fs");
 const User = require("../models/user.model");
+const Questions = require("../models/questions.model");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { default: mongoose } = require("mongoose");
 
 dotenv.config();
+
+const ObjectId = mongoose.Types.ObjectId;
 
 const client = new OpenAI();
 
@@ -17,7 +23,7 @@ const QuestionFormat = z.object({
 });
 
 const register = asyncHandler(async (req, res) => {
-  const { username, fname, lname, password } = req.body;
+  const { username, fname, lname, password } = req?.body;
 
   if (!username || !fname || !lname || !password) {
     throw new CustomError("All fields are mandatory", 400);
@@ -36,6 +42,43 @@ const register = asyncHandler(async (req, res) => {
     message: "User created successfully",
     success: true,
     user: user,
+  });
+});
+
+const login = asyncHandler(async (req, res) => {
+  const { username, password } = req?.body;
+
+  if (!username || !password) {
+    throw new CustomError("All fields are mandatory", 400);
+  }
+
+  const user = await User.findOne({ username });
+
+  if (!user) {
+    throw new CustomError("Register first to login", 400);
+  }
+
+  const comparePassword = await bcrypt.compare(password, user.password);
+
+  if (!comparePassword) {
+    throw new CustomError("Passowrd is incorrect", 400);
+  }
+
+  const token = jwt.sign(
+    {
+      userId: user._id,
+    },
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: "1d" }
+  );
+
+  user.token = token;
+  user.password = undefined;
+
+  return res.status(200).json({
+    message: "User created successfully",
+    user,
+    success: true,
   });
 });
 
@@ -79,22 +122,21 @@ const uploadResume = asyncHandler(async (req, res) => {
     throw new CustomError("Failed to generate questions", 400);
   }
 
-  fs.writeFile(
-    "src/candidate_analytics/questions.json",
-    JSON.stringify(event),
-    (err) => {
-      if (err) {
-        throw new CustomError(err.message, 400);
-      }
-    }
-  );
+  let questions = new Questions({
+    userId: new ObjectId(req.user.userId),
+    questions: event.questions,
+  });
+
+  await questions.save();
 
   return res.json({
     message: "Questions created successfully",
+    questions,
   });
 });
 
 module.exports = {
   uploadResume,
   register,
+  login,
 };
